@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Text Cleaner</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1c1e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  :root {
+    --sys-primary: #006493;
+    --sys-on-primary: #ffffff;
+    --sys-surface: #fcfcff;
+    --sys-on-surface: #1a1c1e;
+    --sys-surface-container: #eef4f8;
+    --sys-surface-variant: #dfe3e7;
+    --sys-on-surface-variant: #42474e;
+    --sys-outline: #72787e;
+    --sys-inverse-surface: #2f3032;
+    --sys-inverse-on-surface: #f1f0f4;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --sys-primary: #8bcefd;
+      --sys-on-primary: #00344f;
+      --sys-surface: #1a1c1e;
+      --sys-on-surface: #e2e2e5;
+      --sys-surface-container: #2d3135;
+      --sys-surface-variant: #42474e;
+      --sys-on-surface-variant: #c2c7ce;
+      --sys-outline: #8c9198;
+      --sys-inverse-surface: #e2e2e5;
+      --sys-inverse-on-surface: #2f3032;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--sys-surface); color: var(--sys-on-surface); display: flex; flex-direction: column; height: 100vh; overflow: hidden; overscroll-behavior-y: none; }
+  
+  /* Top App Bar */
+  header { display: flex; align-items: center; justify-content: space-between; padding: calc(16px + var(--safe-top)) 16px 16px; background: var(--sys-surface); z-index: 10; flex-shrink: 0; }
+  h1 { font-size: 22px; font-weight: 400; line-height: 28px; }
+  .actions { display: flex; gap: 8px; }
+  .icon-btn { background: none; border: none; color: var(--sys-on-surface-variant); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; }
+  .icon-btn:active { background: var(--sys-surface-variant); }
+  .icon-btn svg { fill: currentColor; width: 24px; height: 24px; }
+  .icon-btn[hidden] { display: none !important; }
+  
+  /* Screens */
+  main { flex: 1; position: relative; width: 100%; overflow: hidden; }
+  .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; background: var(--sys-surface); }
+  .screen.active { opacity: 1; pointer-events: auto; z-index: 5; }
+
+  /* Input / Output */
+  textarea { flex: 1; width: 100%; border: none; outline: none; resize: none; background: transparent; color: var(--sys-on-surface); padding: 16px 16px 80px 16px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 15px; line-height: 1.6; }
+  textarea::placeholder { color: var(--sys-on-surface-variant); }
+  
+  /* Settings List */
+  .settings-list { padding: 0 16px 80px; overflow-y: auto; height: 100%; }
+  .list-item { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--sys-surface-variant); }
+  .list-item:last-child { border-bottom: none; }
+  .list-text { flex: 1; padding-right: 16px; }
+  .list-title { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+  .list-desc { font-size: 14px; color: var(--sys-on-surface-variant); line-height: 1.4; }
+  
+  /* Material Switch */
+  .switch { position: relative; display: inline-block; width: 52px; height: 32px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .track { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--sys-surface-variant); border-radius: 16px; transition: .2s; border: 2px solid var(--sys-outline); }
+  .track:before { position: absolute; content: ""; height: 24px; width: 24px; left: 2px; bottom: 2px; background-color: var(--sys-on-surface-variant); border-radius: 50%; transition: .2s; }
+  input:checked + .track { background-color: var(--sys-primary); border-color: var(--sys-primary); }
+  input:checked + .track:before { transform: translateX(20px); background-color: var(--sys-on-primary); }
+  
+  /* FAB */
+  .fab { position: absolute; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 16px; border: none; background: var(--sys-primary); color: var(--sys-on-primary); box-shadow: 0 4px 8px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; transition: transform 0.2s, box-shadow 0.2s, background 0.2s; }
+  .fab:active { transform: scale(0.95); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .fab svg { fill: currentColor; width: 24px; height: 24px; }
+  
+  /* Stats Cards */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; margin-bottom: 16px; }
+  .stat-card { background: var(--sys-surface-container); padding: 16px; border-radius: 12px; }
+  .stat-val { font-size: 24px; font-weight: 500; color: var(--sys-primary); margin-bottom: 4px; }
+  .stat-label { font-size: 12px; font-weight: 500; color: var(--sys-on-surface-variant); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Bottom Navigation */
+  #bottom-nav { display: flex; justify-content: space-around; align-items: center; background: var(--sys-surface-container); padding-bottom: var(--safe-bottom); height: calc(80px + var(--safe-bottom)); border-top: 1px solid var(--sys-surface-variant); z-index: 20; flex-shrink: 0; }
+  .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: none; border: none; color: var(--sys-on-surface-variant); height: 100%; cursor: pointer; }
+  .nav-item .icon-container { width: 64px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 16px; margin-bottom: 4px; transition: background 0.2s, color 0.2s; }
+  .nav-item svg { fill: currentColor; width: 24px; height: 24px; }
+  .nav-item span { font-size: 12px; font-weight: 500; }
+  .nav-item.active { color: var(--sys-on-surface); }
+  .nav-item.active .icon-container { background: var(--sys-primary); color: var(--sys-on-primary); }
+  
+  /* Snackbar */
+  #snackbar { position: fixed; bottom: calc(96px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(150px); background: var(--sys-inverse-surface); color: var(--sys-inverse-on-surface); padding: 14px 24px; border-radius: 8px; font-size: 14px; font-weight: 400; box-shadow: 0 4px 12px rgba(0,0,0,0.15); opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; white-space: nowrap; max-width: 90%; pointer-events: none; }
+  #snackbar.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+
+  <header id="top-bar">
+    <h1 id="screen-title">Input Text</h1>
+    <div class="actions">
+      <button class="icon-btn" id="btn-paste" aria-label="Paste">
+        <svg viewBox="0 0 24 24"><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-clear" aria-label="Clear">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-swap" hidden aria-label="Use Result as Input">
+        <svg viewBox="0 0 24 24"><path d="M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section id="screen-input" class="screen active">
+      <textarea id="input" spellcheck="false" placeholder="Paste your raw text here..."></textarea>
+      <button class="fab" id="fab-clean" aria-label="Clean Text">
+        <svg viewBox="0 0 24 24"><path d="M19 4l-1.42 1.42L14 4l3.58-1.42L19 1l1.42 1.58L24 4l-3.58 1.42zm-6.55 3.45L11 2 9.55 7.45 4 9l5.55 1.55L11 16l1.45-5.45L18 9l-5.55-1.55zm4.13 8.13l-1.58 1.42L11 15l3.58 1.42L16 20l1.42-3.58L21 15l-3.58-1.42z"/></svg>
+      </button>
+    </section>
+
+    <section id="screen-result" class="screen">
+      <textarea id="output" spellcheck="false" placeholder="Your cleaned text will appear here..." readonly></textarea>
+      <button class="fab" id="fab-copy" aria-label="Copy Result">
+        <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+      </button>
+    </section>
+
+    <section id="screen-settings" class="screen">
+      <div class="settings-list">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-val" id="stat-removed">0</div>
+            <div class="stat-label">Chars Removed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-val" id="stat-words">0</div>
+            <div class="stat-label">Result Words</div>
+          </div>
+        </div>
+
+        <div class="list-item">
+          <div class="list-text">
+            <div class="list-title">Span Artifacts</div>
+            <div class="list-desc">Remove [span_0](start_span) structures</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="spanRule" checked><span class="track"></span></label>
+        </div>
+        
+        <div class="list-item">
+          <div class="list-text">
+            <div class="list-title">Citation Markers</div>
+            <div class="list-desc">Remove standalone [start_span], (end_span)</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="citationRule" checked><span class="track"></span></label>
+        </div>
+        
+        <div class="list-item">
+          <div class="list-text">
+            <div class="list-title">Orphan IDs</div>
+            <div class="list-desc">Remove extraction tags like [span_12]</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="orphanRule" checked><span class="track"></span></label>
+        </div>
+        
+        <div class="list-item">
+          <div class="list-text">
+            <div class="list-title">Whitespace Repair</div>
+            <div class="list-desc">Fix spacing left after artifact removal</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="spaceRule" checked><span class="track"></span></label>
+        </div>
+        
+        <div class="list-item">
+          <div class="list-text">
+            <div class="list-title">Live Clean</div>
+            <div class="list-desc">Process text automatically as you type</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="liveRule"><span class="track"></span></label>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav id="bottom-nav">
+    <button class="nav-item active" data-target="screen-input">
+      <div class="icon-container"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></div>
+      <span>Input</span>
+    </button>
+    <button class="nav-item" data-target="screen-result">
+      <div class="icon-container"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg></div>
+      <span>Result</span>
+    </button>
+    <button class="nav-item" data-target="screen-settings">
+      <div class="icon-container"><svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.06-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.73,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.06,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.43-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.49-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/></svg></div>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <div id="snackbar"></div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const input = $('input'), output = $('output');
+  const spanRule = $('spanRule'), citationRule = $('citationRule');
+  const orphanRule = $('orphanRule'), spaceRule = $('spaceRule'), liveRule = $('liveRule');
+
+  // Load Preferences
+  ['spanRule', 'citationRule', 'orphanRule', 'spaceRule', 'liveRule'].forEach(id => {
+    const val = localStorage.getItem('utc_' + id);
+    if(val !== null) $(id).checked = val === 'true';
+    $(id).addEventListener('change', e => {
+      localStorage.setItem('utc_' + id, e.target.checked);
+      if(input.value) doClean(false);
+    });
+  });
+
+  // Navigation Logic
+  const navItems = document.querySelectorAll('.nav-item');
+  const screens = document.querySelectorAll('.screen');
+  const title = $('screen-title');
+  const btnPaste = $('btn-paste'), btnClear = $('btn-clear'), btnSwap = $('btn-swap');
+
+  function switchTab(targetId) {
+    navItems.forEach(item => item.classList.toggle('active', item.dataset.target === targetId));
+    screens.forEach(screen => screen.classList.toggle('active', screen.id === targetId));
+    
+    btnPaste.hidden = targetId !== 'screen-input';
+    btnClear.hidden = targetId !== 'screen-input';
+    btnSwap.hidden = targetId !== 'screen-result';
+    
+    if(targetId === 'screen-input') title.textContent = 'Input Text';
+    if(targetId === 'screen-result') title.textContent = 'Cleaned Result';
+    if(targetId === 'screen-settings') title.textContent = 'Rules & Stats';
+  }
+
+  navItems.forEach(item => {
+    item.addEventListener('click', () => switchTab(item.dataset.target));
+  });
+
+  // Snackbar Logic
+  let snackTimeout;
+  function showToast(msg) {
+    const sb = $('snackbar');
+    sb.textContent = msg;
+    sb.classList.add('show');
+    clearTimeout(snackTimeout);
+    snackTimeout = setTimeout(() => sb.classList.remove('show'), 2500);
+  }
+
+  // Core Logic
+  function updateStats() {
+    const words = output.value.trim() ? output.value.trim().split(/\s+/).length : 0;
+    $('stat-words').textContent = words.toLocaleString();
+    const removed = input.value.length - output.value.length;
+    $('stat-removed').textContent = (removed > 0 ? removed : 0).toLocaleString();
+  }
+
+  function cleanText(text){
+    let s = text;
+    if (spanRule.checked || citationRule.checked || orphanRule.checked){
+      for(let i=0;i<6;i++){
+        const before = s;
+        if (spanRule.checked){
+          s = s.replace(/(?:\[\s*span_\d+\s*\]|\(\s*span_\d+\s*\))?\s*(?:\(\s*start_span\s*\)|\[\s*start_span\s*\])\s*(?:\[\s*span_\d+\s*\]|\(\s*span_\d+\s*\))?\s*(?:\(\s*end_span\s*\)|\[\s*end_span\s*\])?\s*(?:\[\s*span_\d+\s*\]|\(\s*span_\d+\s*\))?/gi, '');
+        }
+        if (citationRule.checked){
+          s = s.replace(/[\(\[]\s*(?:start_span|end_span)\s*[\)\]]/gi, '');
+        }
+        if (orphanRule.checked){
+          s = s.replace(/[\(\[]\s*span_\d+\s*[\)\]]/gi, '');
+        }
+        if (s === before) break;
+      }
+    }
+    if (spaceRule.checked){
+      s = s.replace(/[ \t]{2,}/g, ' ');
+      s = s.replace(/([(\[{])\s+/g, '$1');
+      s = s.replace(/\s+([)\]}])/g, '$1');
+      s = s.replace(/[ \t]+([,.;:!?])/g, '$1');
+      s = s.replace(/\n[ \t]+$/gm, '');
+      s = s.replace(/\n{3,}/g, '\n\n');
+      s = s.trim();
+    }
+    return s;
+  }
+
+  function doClean(manual = true){
+    output.value = cleanText(input.value);
+    updateStats();
+    if(manual) {
+      const diff = input.value.length - output.value.length;
+      showToast(diff > 0 ? `Cleaned ${diff} chars` : 'No artifacts found');
+      switchTab('screen-result');
+    }
+  }
+
+  // Button Listeners
+  $('fab-clean').addEventListener('click', () => {
+    if(!input.value) return showToast('Please enter text first');
+    doClean(true);
+  });
+
+  $('fab-copy').addEventListener('click', async () => {
+    if(!output.value) doClean(false);
+    if(!output.value) return showToast('Nothing to copy');
+    try{
+      await navigator.clipboard.writeText(output.value);
+      showToast('Copied to clipboard');
+    } catch(e){
+      output.focus(); output.select(); document.execCommand('copy');
+      showToast('Copied to clipboard');
+    }
+  });
+
+  btnPaste.addEventListener('click', async () => {
+    try{
+      input.value = await navigator.clipboard.readText();
+      doClean(false);
+      showToast('Pasted from clipboard');
+    } catch(e){
+      showToast('Paste blocked. Please paste manually.');
+    }
+  });
+
+  btnSwap.addEventListener('click', () => {
+    input.value = output.value;
+    output.value = '';
+    updateStats();
+    switchTab('screen-input');
+    showToast('Result moved to input');
+  });
+
+  btnClear.addEventListener('click', () => {
+    input.value = ''; output.value = '';
+    updateStats();
+    showToast('Cleared');
+  });
+
+  input.addEventListener('input', () => {
+    if(liveRule.checked) doClean(false);
+  });
+
+  // Service Worker Registration
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    });
+  }
+})();
+</script>
+</body>
+</html>
