@@ -307,14 +307,14 @@
        *   Previous text####The UPSC Trap and Pattern
        * becomes:
        *   Previous text
-       *   #### The UPSC Trap and Pattern
+       *   ####The UPSC Trap and Pattern
        *
-       * 2-6 hashes are handled here so ordinary text such as C# is untouched.
+       * IMPORTANT: do not add a space after the # characters. Some of the
+       * source material uses compact heading syntax (####Heading), and adding
+       * a space changes the original formatting. Also use [ \t] instead of
+       * \s so a real newline can never be consumed by this repair.
        */
-      s = s.replace(/([^\n#])\s*(#{2,6})(?=[ \t]*\S)/g, '$1\n$2 ');
-
-      // Also normalize the common malformed form "####Heading".
-      s = s.replace(/(^|\n)(#{1,6})(?=\S)/g, '$1$2 ');
+      s = s.replace(/([^\n#])[ \t]*(#{2,6})(?=[ \t]*\S)/g, '$1\n$2');
 
       // Repair common Markdown block markers that are clearly embedded in a
       // line. These rules require whitespace before the marker, so ordinary
