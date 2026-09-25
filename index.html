@@ -266,30 +266,69 @@
 
   function cleanText(text){
     let s = text;
+
     if (spanRule.checked || citationRule.checked || orphanRule.checked){
       for(let i=0;i<6;i++){
         const before = s;
+
         if (spanRule.checked){
-          s = s.replace(/(?:\[\s*span_\d+\s*\]|\(\s*span_\d+\s*\))?\s*(?:\(\s*start_span\s*\)|\[\s*start_span\s*\])\s*(?:\[\s*span_\d+\s*\]|\(\s*span_\d+\s*\))?\s*(?:\(\s*end_span\s*\)|\[\s*end_span\s*\])?\s*(?:\[\s*span_\d+\s*\]|\(\s*span_\d+\s*\))?/gi, '');
+          /*
+           * IMPORTANT: use [ \t]* instead of \s* here.
+           * JavaScript \s includes \n, so the old expression could consume
+           * real line breaks while removing extraction artifacts.
+           */
+          s = s.replace(/(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?[ \t]*(?:\([ \t]*start_span[ \t]*\)|\[[ \t]*start_span[ \t]*\])[ \t]*(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?[ \t]*(?:\([ \t]*end_span[ \t]*\)|\[[ \t]*end_span[ \t]*\])?[ \t]*(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?/gi, '');
         }
+
         if (citationRule.checked){
-          s = s.replace(/[\(\[]\s*(?:start_span|end_span)\s*[\)\]]/gi, '');
+          s = s.replace(/[\(\[][ \t]*(?:start_span|end_span)[ \t]*[\)\]]/gi, '');
         }
+
         if (orphanRule.checked){
-          s = s.replace(/[\(\[]\s*span_\d+\s*[\)\]]/gi, '');
+          s = s.replace(/[\(\[][ \t]*span_\d+[ \t]*[\)\]]/gi, '');
         }
+
         if (s === before) break;
       }
     }
+
     if (spaceRule.checked){
+      // Normalize horizontal whitespace only. Newlines are meaningful here.
       s = s.replace(/[ \t]{2,}/g, ' ');
-      s = s.replace(/([(\[{])\s+/g, '$1');
-      s = s.replace(/\s+([)\]}])/g, '$1');
+      s = s.replace(/([\(\[\{])[ \t]+/g, '$1');
+      s = s.replace(/[ \t]+([\)\]\}])/g, '$1');
       s = s.replace(/[ \t]+([,.;:!?])/g, '$1');
-      s = s.replace(/\n[ \t]+$/gm, '');
+      s = s.replace(/[ \t]+\n/g, '\n');
+      s = s.replace(/\n[ \t]+/g, '\n');
+
+      /*
+       * Restore a Markdown heading boundary when artifact removal has joined
+       * it directly to the previous line, for example:
+       *   Previous text####The UPSC Trap and Pattern
+       * becomes:
+       *   Previous text
+       *   #### The UPSC Trap and Pattern
+       *
+       * 2-6 hashes are handled here so ordinary text such as C# is untouched.
+       */
+      s = s.replace(/([^\n#])\s*(#{2,6})(?=[ \t]*\S)/g, '$1\n$2 ');
+
+      // Also normalize the common malformed form "####Heading".
+      s = s.replace(/(^|\n)(#{1,6})(?=\S)/g, '$1$2 ');
+
+      // Repair common Markdown block markers that are clearly embedded in a
+      // line. These rules require whitespace before the marker, so ordinary
+      // hyphens and punctuation in prose are not split.
+      s = s.replace(/([^\n])([ \t]+)([-*+][ \t]+)(?=\S)/g, '$1\n$3');
+      s = s.replace(/([^\n])([ \t]+)(\d{1,9}\.[ \t]+)(?=\S)/g, '$1\n$3');
+      s = s.replace(/([^\n])([ \t]+)(>[ \t]*)(?=\S)/g, '$1\n$3');
+
+      // Keep blank-line structure sane without deleting intentional paragraphs.
+      s = s.replace(/[ \t]+\n/g, '\n');
       s = s.replace(/\n{3,}/g, '\n\n');
       s = s.trim();
     }
+
     return s;
   }
 
