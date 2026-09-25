@@ -265,68 +265,149 @@
   }
 
   function cleanText(text){
-    let s = text;
+    let s = text.replace(/\r\n?/g, '\n');
 
+    /*
+     * STEP 1 — Remove extraction artifacts.
+     *
+     * IMPORTANT:
+     * [ \t] is deliberately used instead of \s. JavaScript \s includes
+     * newline characters, and consuming a newline here is what originally
+     * caused separate Markdown lines to become joined.
+     */
     if (spanRule.checked || citationRule.checked || orphanRule.checked){
-      for(let i=0;i<6;i++){
+      for(let i = 0; i < 8; i++){
         const before = s;
 
         if (spanRule.checked){
-          /*
-           * IMPORTANT: use [ \t]* instead of \s* here.
-           * JavaScript \s includes \n, so the old expression could consume
-           * real line breaks while removing extraction artifacts.
-           */
-          s = s.replace(/(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?[ \t]*(?:\([ \t]*start_span[ \t]*\)|\[[ \t]*start_span[ \t]*\])[ \t]*(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?[ \t]*(?:\([ \t]*end_span[ \t]*\)|\[[ \t]*end_span[ \t]*\])?[ \t]*(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?/gi, '');
+          s = s.replace(
+            /(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?[ \t]*(?:\([ \t]*start_span[ \t]*\)|\[[ \t]*start_span[ \t]*\])[ \t]*(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?[ \t]*(?:\([ \t]*end_span[ \t]*\)|\[[ \t]*end_span[ \t]*\])?[ \t]*(?:\[[ \t]*span_\d+[ \t]*\]|\([ \t]*span_\d+[ \t]*\))?/gi,
+            ''
+          );
         }
 
         if (citationRule.checked){
-          s = s.replace(/[\(\[][ \t]*(?:start_span|end_span)[ \t]*[\)\]]/gi, '');
+          s = s.replace(
+            /[\(\[][ \t]*(?:start_span|end_span)[ \t]*[\)\]]/gi,
+            ''
+          );
         }
 
         if (orphanRule.checked){
-          s = s.replace(/[\(\[][ \t]*span_\d+[ \t]*[\)\]]/gi, '');
+          s = s.replace(
+            /[\(\[][ \t]*span_\d+[ \t]*[\)\]]/gi,
+            ''
+          );
         }
 
         if (s === before) break;
       }
     }
 
+    /*
+     * STEP 2 — Protect regions where line/space repair must NEVER operate.
+     *
+     * This is the critical fix for:
+     *   \tau_y + ...
+     *   n > 1
+     *   1 - \frac{...}
+     *   \bar{h} + ...
+     * etc.
+     *
+     * Fenced code is protected first, then display/inline LaTeX.
+     */
+    const protectedParts = [];
+    const protect = value => {
+      const index = protectedParts.push(value) - 1;
+      return `\uE000${index}\uE001`;
+    };
+
+    // Fenced Markdown code blocks.
+    s = s.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, protect);
+
+    // Display LaTeX.
+    s = s.replace(/\$\$[\s\S]*?\$\$/g, protect);
+
+    // Inline LaTeX. Keep escaped \$ from acting as a delimiter.
+    s = s.replace(
+      /(?<!\\)\$(?!\$)(?:\\.|[^$\\\n])+(?<!\\)\$(?!\$)/g,
+      protect
+    );
+
     if (spaceRule.checked){
-      // Normalize horizontal whitespace only. Newlines are meaningful here.
+      /*
+       * STEP 3 — Repair ordinary Markdown/text only.
+       * At this point LaTeX and code are placeholders, so operators such as
+       * +, -, >, #, and spaces inside them cannot trigger formatting repairs.
+       */
+
+      // Collapse repeated horizontal whitespace only.
       s = s.replace(/[ \t]{2,}/g, ' ');
+
+      // Clean whitespace around common punctuation/brackets.
       s = s.replace(/([\(\[\{])[ \t]+/g, '$1');
       s = s.replace(/[ \t]+([\)\]\}])/g, '$1');
       s = s.replace(/[ \t]+([,.;:!?])/g, '$1');
-      s = s.replace(/[ \t]+\n/g, '\n');
-      s = s.replace(/\n[ \t]+/g, '\n');
 
       /*
-       * Restore a Markdown heading boundary when artifact removal has joined
-       * it directly to the previous line, for example:
-       *   Previous text####The UPSC Trap and Pattern
-       * becomes:
-       *   Previous text
-       *   ####The UPSC Trap and Pattern
+       * Merge a split ATX heading marker:
        *
-       * IMPORTANT: do not add a space after the # characters. Some of the
-       * source material uses compact heading syntax (####Heading), and adding
-       * a space changes the original formatting. Also use [ \t] instead of
-       * \s so a real newline can never be consumed by this repair.
+       *   ### # The UPSC Trap & Pattern
+       *   ### #The UPSC Trap & Pattern
+       *
+       * becomes:
+       *
+       *   ####The UPSC Trap & Pattern
+       *
+       * No space is inserted after the hashes.
        */
-      s = s.replace(/([^\n#])[ \t]*(#{2,6})(?=[ \t]*\S)/g, '$1\n$2');
+      s = s.replace(
+        /(^|\n)([ \t]*)(#{1,5})[ \t]+#[ \t]*(?=\S)/g,
+        '$1$2$3#'
+      );
 
-      // Repair common Markdown block markers that are clearly embedded in a
-      // line. These rules require whitespace before the marker, so ordinary
-      // hyphens and punctuation in prose are not split.
-      s = s.replace(/([^\n])([ \t]+)([-*+][ \t]+)(?=\S)/g, '$1\n$3');
-      s = s.replace(/([^\n])([ \t]+)(\d{1,9}\.[ \t]+)(?=\S)/g, '$1\n$3');
-      s = s.replace(/([^\n])([ \t]+)(>[ \t]*)(?=\S)/g, '$1\n$3');
+      /*
+       * Restore a missing newline before an embedded Markdown heading.
+       *
+       * Examples:
+       *   Previous text####The UPSC Trap & Pattern
+       *
+       *   Previous text ### Question 2
+       *
+       * become:
+       *   Previous text
+       *   ####The UPSC Trap & Pattern
+       *
+       *   Previous text
+       *   ### Question 2
+       *
+       * This deliberately does NOT add a space after #.
+       */
+      s = s.replace(
+        /([^\n#])[ \t]*(#{1,6})(?=[ \t]*\S)/g,
+        '$1\n$2'
+      );
 
-      // Keep blank-line structure sane without deleting intentional paragraphs.
+      // Remove trailing horizontal whitespace from each line.
       s = s.replace(/[ \t]+\n/g, '\n');
+      s = s.replace(/\n[ \t]+$/gm, '');
+
+      // Preserve useful Markdown paragraph spacing, but prevent huge gaps.
       s = s.replace(/\n{3,}/g, '\n\n');
+
       s = s.trim();
+    }
+
+    /*
+     * STEP 4 — Restore protected LaTeX/code exactly as they appeared after
+     * artifact removal. Nothing in the whitespace/Markdown stage can modify
+     * their internal spaces or newlines.
+     */
+    for(let i = 0; i < protectedParts.length; i++){
+      s = s.replace(
+        new RegExp(`\\uE000${i}\\uE001`, 'g'),
+        () => protectedParts[i]
+      );
     }
 
     return s;
